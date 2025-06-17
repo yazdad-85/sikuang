@@ -1,0 +1,24 @@
+%!
+% AFM file for Helvetica font
+% This is a placeholder AFM file for Helvetica font to satisfy pdfkit dependency.
+% You should replace this with a proper Helvetica.afm file if available.
+StartFontMetrics 4.1
+FontName Helvetica
+FullName Helvetica
+FamilyName Helvetica
+Weight Medium
+ItalicAngle 0
+IsFixedPitch false
+CharacterSet ExtendedRoman
+FontBBox -166 -225 1000 931
+UnderlinePosition -100
+UnderlineThickness 50
+Version 001.007
+EncodingScheme AdobeStandardEncoding
+CapHeight 718
+XHeight 523
+Ascender 718
+Descender -207
+StdHW 51
+StdVW 84
+EndFontMetrics
