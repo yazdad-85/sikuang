@@ -15,7 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils/currency';
 import { formatDate, formatDateForInput, getTodayForInput, isValidDate } from '@/lib/utils/date';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Calendar, Target, Clock, AlertCircle, RefreshCw, Calculator } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, Target, Clock, AlertCircle, RefreshCw, Calculator, FileText } from 'lucide-react';
 import { EkuivalenFields } from './components/EkuivalenFields';
 import { RencanaFormData } from './types';
 
@@ -28,6 +28,7 @@ export default function RencanaKegiatanPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [formData, setFormData] = useState<RencanaFormData>({
     tahun_anggaran_id: '',
@@ -92,6 +93,51 @@ export default function RencanaKegiatanPage() {
       toast.error('Gagal memuat data: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (rencanaKegiatan.length === 0) {
+      toast.error('Tidak ada data untuk diexport');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      // Get the first tahun anggaran from the data
+      const tahunAnggaranId = rencanaKegiatan[0]?.tahun_anggaran_id;
+      
+      if (!tahunAnggaranId) {
+        toast.error('Tidak dapat menemukan tahun anggaran');
+        return;
+      }
+
+      const url = `/api/laporan/rencana-kegiatan/export-pdf?tahunAnggaranId=${tahunAnggaranId}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Gagal mengexport PDF');
+      }
+
+      const blob = await response.blob();
+      const url2 = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url2;
+      a.download = `laporan-rencana-kegiatan-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url2);
+      document.body.removeChild(a);
+      
+      toast.success('PDF berhasil diexport');
+    } catch (error: any) {
+      console.error('Error exporting PDF:', error);
+      toast.error('Gagal mengexport PDF: ' + error.message);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -311,138 +357,148 @@ export default function RencanaKegiatanPage() {
             Kelola rencana kegiatan dan anggaran
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm}>
-              <Plus className="h-4 w-4 mr-2" />
-              Tambah Rencana
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingItem ? 'Edit Rencana Kegiatan' : 'Tambah Rencana Kegiatan'}
-              </DialogTitle>
-              <DialogDescription>
-                Isi form di bawah untuk {editingItem ? 'mengubah' : 'menambahkan'} rencana kegiatan.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Tahun Anggaran *</Label>
-                  <Select 
-                    value={formData.tahun_anggaran_id} 
-                    onValueChange={(value) => setFormData({ ...formData, tahun_anggaran_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih tahun anggaran" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tahunAnggaran.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.nama_tahun_anggaran}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleExportPDF} 
+            disabled={exporting || rencanaKegiatan.length === 0}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            {exporting ? 'Mengexport...' : 'Export PDF'}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={resetForm}>
+                <Plus className="h-4 w-4 mr-2" />
+                Tambah Rencana
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingItem ? 'Edit Rencana Kegiatan' : 'Tambah Rencana Kegiatan'}
+                </DialogTitle>
+                <DialogDescription>
+                  Isi form di bawah untuk {editingItem ? 'mengubah' : 'menambahkan'} rencana kegiatan.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tahun Anggaran *</Label>
+                    <Select 
+                      value={formData.tahun_anggaran_id} 
+                      onValueChange={(value) => setFormData({ ...formData, tahun_anggaran_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih tahun anggaran" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tahunAnggaran.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.nama_tahun_anggaran}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Kategori *</Label>
+                    <Select 
+                      value={formData.kategori_id} 
+                      onValueChange={(value) => setFormData({ ...formData, kategori_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih kategori" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {kategori.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.nama_kategori}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Kategori *</Label>
-                  <Select 
-                    value={formData.kategori_id} 
-                    onValueChange={(value) => setFormData({ ...formData, kategori_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih kategori" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {kategori.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.nama_kategori}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Nama Kegiatan *</Label>
-                <Input
-                  value={formData.nama_kegiatan}
-                  onChange={(e) => setFormData({ ...formData, nama_kegiatan: e.target.value })}
-                  placeholder="Masukkan nama kegiatan"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Deskripsi</Label>
-                <Textarea
-                  value={formData.deskripsi_kegiatan}
-                  onChange={(e) => setFormData({ ...formData, deskripsi_kegiatan: e.target.value })}
-                  placeholder="Masukkan deskripsi kegiatan (opsional)"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Tanggal Mulai *</Label>
+                  <Label>Nama Kegiatan *</Label>
                   <Input
-                    type="date"
-                    value={formData.tanggal_rencana}
-                    onChange={(e) => setFormData({ ...formData, tanggal_rencana: e.target.value })}
+                    value={formData.nama_kegiatan}
+                    onChange={(e) => setFormData({ ...formData, nama_kegiatan: e.target.value })}
+                    placeholder="Masukkan nama kegiatan"
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Tanggal Selesai *</Label>
-                  <Input
-                    type="date"
-                    value={formData.tanggal_selesai}
-                    onChange={(e) => setFormData({ ...formData, tanggal_selesai: e.target.value })}
-                    min={formData.tanggal_rencana}
+                  <Label>Deskripsi</Label>
+                  <Textarea
+                    value={formData.deskripsi_kegiatan}
+                    onChange={(e) => setFormData({ ...formData, deskripsi_kegiatan: e.target.value })}
+                    placeholder="Masukkan deskripsi kegiatan (opsional)"
+                    rows={3}
                   />
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label>Rincian Biaya *</Label>
-                  <Calculator className="h-4 w-4 text-muted-foreground" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tanggal Mulai *</Label>
+                    <Input
+                      type="date"
+                      value={formData.tanggal_rencana}
+                      onChange={(e) => setFormData({ ...formData, tanggal_rencana: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tanggal Selesai *</Label>
+                    <Input
+                      type="date"
+                      value={formData.tanggal_selesai}
+                      onChange={(e) => setFormData({ ...formData, tanggal_selesai: e.target.value })}
+                      min={formData.tanggal_rencana}
+                    />
+                  </div>
                 </div>
-                <EkuivalenFields
-                  ekuivalen1={formData.ekuivalen_1}
-                  ekuivalen1Satuan={formData.ekuivalen_1_satuan}
-                  ekuivalen2={formData.ekuivalen_2}
-                  ekuivalen2Satuan={formData.ekuivalen_2_satuan}
-                  ekuivalen3={formData.ekuivalen_3}
-                  ekuivalen3Satuan={formData.ekuivalen_3_satuan}
-                  hargaSatuan={formData.harga_satuan}
-                  onChange={(values) => setFormData({ ...formData, ...values })}
-                />
-              </div>
 
-              {formData.jumlah_rencana && (
-                <Alert>
-                  <Calculator className="h-4 w-4" />
-                  <AlertDescription>
-                    Total Rencana: {formatCurrency(parseFloat(formData.jumlah_rencana))}
-                  </AlertDescription>
-                </Alert>
-              )}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label>Rincian Biaya *</Label>
+                    <Calculator className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <EkuivalenFields
+                    ekuivalen1={formData.ekuivalen_1}
+                    ekuivalen1Satuan={formData.ekuivalen_1_satuan}
+                    ekuivalen2={formData.ekuivalen_2}
+                    ekuivalen2Satuan={formData.ekuivalen_2_satuan}
+                    ekuivalen3={formData.ekuivalen_3}
+                    ekuivalen3Satuan={formData.ekuivalen_3_satuan}
+                    hargaSatuan={formData.harga_satuan}
+                    onChange={(values) => setFormData({ ...formData, ...values })}
+                  />
+                </div>
 
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                  Batal
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? 'Menyimpan...' : (editingItem ? 'Perbarui' : 'Simpan')}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+                {formData.jumlah_rencana && (
+                  <Alert>
+                    <Calculator className="h-4 w-4" />
+                    <AlertDescription>
+                      Total Rencana: {formatCurrency(parseFloat(formData.jumlah_rencana))}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                    Batal
+                  </Button>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? 'Menyimpan...' : (editingItem ? 'Perbarui' : 'Simpan')}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
