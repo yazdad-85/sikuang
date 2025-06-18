@@ -61,6 +61,7 @@ export default function RencanaKegiatanPage() {
         .from('rencana_kegiatan')
         .select(`
           *,
+          tahun_anggaran_id,
           tahun_anggaran:tahun_anggaran_id(nama_tahun_anggaran),
           kategori:kategori_id(nama_kategori, tipe)
         `)
@@ -102,25 +103,21 @@ export default function RencanaKegiatanPage() {
       return;
     }
 
+    const tahunAnggaranId = rencanaKegiatan[0]?.tahun_anggaran_id;
+    console.log('tahunAnggaranId untuk export:', tahunAnggaranId, typeof tahunAnggaranId);
+    if (!tahunAnggaranId || typeof tahunAnggaranId !== 'string') {
+      toast.error('ID tahun anggaran tidak valid');
+      return;
+    }
+
     setExporting(true);
     try {
-      // Get the first tahun anggaran from the data
-      const tahunAnggaranId = rencanaKegiatan[0]?.tahun_anggaran_id;
-      
-      if (!tahunAnggaranId) {
-        toast.error('Tidak dapat menemukan tahun anggaran');
-        return;
-      }
-
-      const url = `/api/laporan/rencana-kegiatan/export-pdf?tahunAnggaranId=${tahunAnggaranId}`;
-      
+      const url = `/api/rencana-kegiatan/export-pdf?tahunAnggaranId=${tahunAnggaranId}`;
       const response = await fetch(url);
-      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Gagal mengexport PDF');
       }
-
       const blob = await response.blob();
       const url2 = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -131,7 +128,6 @@ export default function RencanaKegiatanPage() {
       a.click();
       window.URL.revokeObjectURL(url2);
       document.body.removeChild(a);
-      
       toast.success('PDF berhasil diexport');
     } catch (error: any) {
       console.error('Error exporting PDF:', error);
