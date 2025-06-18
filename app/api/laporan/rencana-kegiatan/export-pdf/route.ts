@@ -78,13 +78,13 @@ export async function GET(req: NextRequest): Promise<Response> {
       );
     }
 
-    // Get tahun anggaran data
+    // Get tahun anggaran data - using the same approach as other laporan pages
     console.log('🔍 Fetching tahun_anggaran data...');
-    const { data: tahunData, error: tahunError } = await supabase
+    const { data: tahunDataList, error: tahunError } = await supabase
       .from('tahun_anggaran')
       .select('*')
       .eq('id', tahunAnggaranId)
-      .single();
+      .order('nama_tahun_anggaran', { ascending: false });
     
     if (tahunError) {
       console.error('❌ Error fetching tahun_anggaran:', tahunError);
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       });
     }
     
-    if (!tahunData) {
+    if (!tahunDataList || tahunDataList.length === 0) {
       return new Response(JSON.stringify({ 
         error: 'Tahun anggaran tidak ditemukan'
       }), { 
@@ -106,6 +106,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       });
     }
 
+    const tahunData = tahunDataList[0];
     console.log('✅ Tahun anggaran data:', tahunData);
 
     // Get rencana kegiatan data
