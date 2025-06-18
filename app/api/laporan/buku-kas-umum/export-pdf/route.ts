@@ -44,7 +44,7 @@ interface Transaksi {
   } | null;
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<Response> {
   console.log('🔍 GET /api/laporan/buku-kas-umum/export-pdf');
   
   try {
@@ -56,9 +56,12 @@ export async function GET(req: NextRequest) {
     
     if (!tahunAnggaranId) {
       console.error('❌ Missing tahunAnggaranId');
-      return NextResponse.json(
-        { error: 'Tahun anggaran wajib diisi' },
-        { status: 400 }
+      return new Response(
+        JSON.stringify({ error: 'Tahun anggaran wajib diisi' }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
       );
     }
     
@@ -156,7 +159,13 @@ export async function GET(req: NextRequest) {
             updated_at: ''
           };
           console.log('✅ Using tahun_anggaran data from full list:', tahunData);
-          return; // Exit the try block successfully
+          return new Response(
+            JSON.stringify({ error: 'Failed to fetch year data directly' }),
+            { 
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
         }
         
         throw new Error(`Gagal mengambil detail tahun anggaran: ${error.message}`);
@@ -393,7 +402,7 @@ export async function GET(req: NextRequest) {
       console.log('✅ PDF generated successfully');
       
       // Return the PDF
-      return new NextResponse(pdfBuffer, {
+      return new Response(pdfBuffer, {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
