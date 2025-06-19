@@ -127,110 +127,69 @@ export default function RencanaKegiatanPage() {
     }
   };
 
-  const handleExportPDF = async () => {
-    if (rencanaKegiatan.length === 0) {
-      toast.error('Tidak ada data untuk diexport');
-      return;
-    }
+  const handleExportPDF = async (tahunAnggaranId, kategoriId = null, bulan = 'all') => {
+  // 1. Fetch data dari API
+  const params = new URLSearchParams({
+    tahunAnggaranId,
+    ...(kategoriId ? { kategoriId } : {}),
+    ...(bulan ? { bulan } : {})
+  });
+  const res = await fetch(`/api/laporan/rencana-kegiatan/export-pdf?${params.toString()}`);
+  const { tahunData, rencanaData } = await res.json();
 
-    const tahunAnggaranId = rencanaKegiatan[0]?.tahun_anggaran_id;
-    console.log('tahunAnggaranId untuk export:', tahunAnggaranId, typeof tahunAnggaranId);
-    if (!tahunAnggaranId || typeof tahunAnggaranId !== 'string') {
-      toast.error('ID tahun anggaran tidak valid');
-      return;
-    }
+  // 2. Generate PDF di browser
+  const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text("LAPORAN RENCANA KEGIATAN", 105, 20, { align: "center" });
+  doc.setFontSize(12);
+  doc.text(`Tahun Anggaran: ${tahunData.nama_tahun_anggaran}`, 105, 30, { align: "center" });
 
-    setExporting(true);
-    try {
-      // Fetch data JSON dari API
-      const url = `/api/rencana-kegiatan/export-pdf?tahunAnggaranId=${tahunAnggaranId}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Gagal mengexport PDF');
-      }
-      const { tahunAnggaran, rencanaKegiatan: data } = await response.json();
+  autoTable(doc, {
+    startY: 40,
+    head: [["No", "Nama Kegiatan", "Kategori", "Tanggal Mulai", "Tanggal Selesai", "Rincian", "Total (Rp)"]],
+    body: rencanaData.map((item, idx) => [
+      idx + 1,
+      item.nama_kegiatan,
+      item.kategori?.nama_kategori ?? "-",
+      formatDate(item.tanggal_rencana),
+      formatDate(item.tanggal_selesai),
+      formatEkuivalen(item),
+      formatCurrency(item.jumlah_rencana)
+    ]),
+  });
 
-      // Generate PDF di browser
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      doc.setFontSize(16);
-      doc.text('LAPORAN RENCANA KEGIATAN', 148.5, 20, { align: 'center' });
-      doc.setFontSize(12);
-      doc.text(`Tahun Anggaran: ${tahunAnggaran.nama_tahun_anggaran}`, 148.5, 30, { align: 'center' });
+  doc.save(`laporan-rencana-kegiatan-${tahunData.nama_tahun_anggaran}.pdf`);
+};
 
-      if (data && data.length > 0) {
-        const tableData = data.map((item: any, index: number) => [
-          index + 1,
-          item.nama_kegiatan,
-          (item.kategori && (item.kategori.nama_kategori || item.kategori)) ? (item.kategori.nama_kategori || item.kategori) : '-',
-          tahunAnggaran.nama_tahun_anggaran,
-          formatDate(item.tanggal_rencana),
-          formatDate(item.tanggal_selesai),
-          formatEkuivalen(item),
-          formatCurrency(item.jumlah_rencana)
-        ]);
-        autoTable(doc, {
-          startY: 50,
-          head: [['No', 'Nama Kegiatan', 'Kategori', 'Tahun Anggaran', 'Tanggal Mulai', 'Tanggal Selesai', 'Rincian', 'Total (Rp)']],
-          body: tableData,
-          theme: 'grid',
-          headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 10 },
-          styles: { fontSize: 9 },
-          columnStyles: {
-            0: { cellWidth: 12 },
-            1: { cellWidth: 50 },
-            2: { cellWidth: 35 },
-            3: { cellWidth: 35 },
-            4: { cellWidth: 30 },
-            5: { cellWidth: 30 },
-            6: { cellWidth: 40 },
-            7: { cellWidth: 30 }
-          }
-        });
-        // Ringkasan
-        const totalRencana = data.reduce((sum: number, item: any) => sum + (item.jumlah_rencana || 0), 0);
-        const totalPemasukan = data.filter((item: any) => item.kategori?.tipe === 'pemasukan').reduce((sum: number, item: any) => sum + (item.jumlah_rencana || 0), 0);
-        const totalPengeluaran = data.filter((item: any) => item.kategori?.tipe === 'pengeluaran').reduce((sum: number, item: any) => sum + (item.jumlah_rencana || 0), 0);
-        let finalY = (doc as any).lastAutoTable?.finalY || 90;
-        finalY += 40;
-        const kota = pengaturan.nama_kota || '-';
-        const tanggalCetak = new Date();
-        const urlCetak = window.location.origin + window.location.pathname;
-        const namaPimpinan = pengaturan.nama_pimpinan || '-';
-        const namaBendahara = pengaturan.nama_bendahara || '-';
-
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 20;
-        const rightX = pageWidth - margin;
-        // Footer: kota, tanggal lengkap di atas tanda tangan (rata kanan di atas bendahara)
-        doc.setFontSize(12);
-        doc.text(`${kota}, ${formatTanggalLengkap(tanggalCetak)}`, rightX, finalY, { align: 'right' });
-        // Kolom tanda tangan
-        doc.setFontSize(12);
-        doc.text('Pimpinan', margin, finalY + 20);
-        doc.text('Bendahara', rightX, finalY + 20, { align: 'right' });
-        // Nama dalam tanda kurung
-        doc.setFontSize(12);
-        doc.text(`(${namaPimpinan})`, margin, finalY + 45);
-        doc.text(`(${namaBendahara})`, rightX, finalY + 45, { align: 'right' });
-        // Footer paling bawah: dicetak dari ... sampai dengan tanggal jam
-        doc.setFontSize(10);
-        const footerText = `Dicetak dari: ${urlCetak} sampai dengan ${formatTanggalJam(tanggalCetak)}`;
-        doc.text(footerText, pageWidth / 2, 200, { align: 'center' });
-      } else {
-        doc.setFontSize(12);
-        doc.text('Tidak ada data rencana kegiatan untuk periode yang dipilih.', 105, 80, { align: 'center' });
-      }
-      // Download PDF
-      doc.save(`laporan-rencana-kegiatan-${new Date().toISOString().split('T')[0]}.pdf`);
-      toast.success('PDF berhasil diexport');
-    } catch (error: any) {
-      console.error('Error exporting PDF:', error);
-      toast.error('Gagal mengexport PDF: ' + error.message);
-    } finally {
-      setExporting(false);
-    }
-  };
+// Helper functions
+function formatDate(dateStr) {
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch {
+    return dateStr;
+  }
+}
+function formatCurrency(amount) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
+}
+function formatEkuivalen(item) {
+  const parts = [];
+  if (item.ekuivalen_1) parts.push(`${item.ekuivalen_1} ${item.ekuivalen_1_satuan}`);
+  if (item.ekuivalen_2) parts.push(`${item.ekuivalen_2} ${item.ekuivalen_2_satuan}`);
+  if (item.ekuivalen_3) parts.push(`${item.ekuivalen_3} ${item.ekuivalen_3_satuan}`);
+  if (item.harga_satuan) parts.push(`@ ${formatCurrency(item.harga_satuan)}`);
+  return parts.join(" × ");
+}
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
