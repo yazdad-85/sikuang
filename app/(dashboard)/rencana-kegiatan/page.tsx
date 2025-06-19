@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Calendar, Target, Clock, AlertCircle, RefreshCw, Calculator, FileText } from 'lucide-react';
 import { EkuivalenFields } from './components/EkuivalenFields';
 import { RencanaFormData } from './types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function RencanaKegiatanPage() {
   const [rencanaKegiatan, setRencanaKegiatan] = useState<any[]>([]);
@@ -29,6 +31,12 @@ export default function RencanaKegiatanPage() {
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [pengaturan, setPengaturan] = useState<Record<string, string>>({
+    nama_kota: '',
+    nama_bendahara: '',
+    nama_pimpinan: '',
+    nama_aplikasi: '',
+  });
 
   const [formData, setFormData] = useState<RencanaFormData>({
     tahun_anggaran_id: '',
@@ -49,6 +57,7 @@ export default function RencanaKegiatanPage() {
 
   useEffect(() => {
     fetchData();
+    fetchPengaturan();
   }, []);
 
   const fetchData = async () => {
@@ -97,6 +106,27 @@ export default function RencanaKegiatanPage() {
     }
   };
 
+  const fetchPengaturan = async () => {
+    try {
+      const { data: pengaturanData, error: pengaturanError } = await supabase
+        .from('pengaturan_aplikasi')
+        .select('*');
+      if (pengaturanError) throw pengaturanError;
+      const pengaturanMap: Record<string, string> = {};
+      pengaturanData?.forEach((item) => {
+        pengaturanMap[item.kunci_pengaturan] = item.nilai_pengaturan;
+      });
+      setPengaturan({
+        nama_kota: pengaturanMap.nama_kota || '',
+        nama_bendahara: pengaturanMap.nama_bendahara || '',
+        nama_pimpinan: pengaturanMap.nama_pimpinan || '',
+        nama_aplikasi: pengaturanMap.nama_aplikasi || '',
+      });
+    } catch (error) {
+      // optional: toast error
+    }
+  };
+
   const handleExportPDF = async () => {
     if (rencanaKegiatan.length === 0) {
       toast.error('Tidak ada data untuk diexport');
@@ -112,22 +142,87 @@ export default function RencanaKegiatanPage() {
 
     setExporting(true);
     try {
+      // Fetch data JSON dari API
       const url = `/api/rencana-kegiatan/export-pdf?tahunAnggaranId=${tahunAnggaranId}`;
       const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Gagal mengexport PDF');
       }
-      const blob = await response.blob();
-      const url2 = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url2;
-      a.download = `laporan-rencana-kegiatan-${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url2);
-      document.body.removeChild(a);
+      const { tahunAnggaran, rencanaKegiatan: data } = await response.json();
+
+      // Generate PDF di browser
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFontSize(16);
+      doc.text('LAPORAN RENCANA KEGIATAN', 148.5, 20, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text(`Tahun Anggaran: ${tahunAnggaran.nama_tahun_anggaran}`, 148.5, 30, { align: 'center' });
+
+      if (data && data.length > 0) {
+        const tableData = data.map((item: any, index: number) => [
+          index + 1,
+          item.nama_kegiatan,
+          (item.kategori && (item.kategori.nama_kategori || item.kategori)) ? (item.kategori.nama_kategori || item.kategori) : '-',
+          tahunAnggaran.nama_tahun_anggaran,
+          formatDate(item.tanggal_rencana),
+          formatDate(item.tanggal_selesai),
+          formatEkuivalen(item),
+          formatCurrency(item.jumlah_rencana)
+        ]);
+        autoTable(doc, {
+          startY: 50,
+          head: [['No', 'Nama Kegiatan', 'Kategori', 'Tahun Anggaran', 'Tanggal Mulai', 'Tanggal Selesai', 'Rincian', 'Total (Rp)']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 10 },
+          styles: { fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 12 },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 35 },
+            3: { cellWidth: 35 },
+            4: { cellWidth: 30 },
+            5: { cellWidth: 30 },
+            6: { cellWidth: 40 },
+            7: { cellWidth: 30 }
+          }
+        });
+        // Ringkasan
+        const totalRencana = data.reduce((sum: number, item: any) => sum + (item.jumlah_rencana || 0), 0);
+        const totalPemasukan = data.filter((item: any) => item.kategori?.tipe === 'pemasukan').reduce((sum: number, item: any) => sum + (item.jumlah_rencana || 0), 0);
+        const totalPengeluaran = data.filter((item: any) => item.kategori?.tipe === 'pengeluaran').reduce((sum: number, item: any) => sum + (item.jumlah_rencana || 0), 0);
+        let finalY = (doc as any).lastAutoTable?.finalY || 90;
+        finalY += 40;
+        const kota = pengaturan.nama_kota || '-';
+        const tanggalCetak = new Date();
+        const urlCetak = window.location.origin + window.location.pathname;
+        const namaPimpinan = pengaturan.nama_pimpinan || '-';
+        const namaBendahara = pengaturan.nama_bendahara || '-';
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 20;
+        const rightX = pageWidth - margin;
+        // Footer: kota, tanggal lengkap di atas tanda tangan (rata kanan di atas bendahara)
+        doc.setFontSize(12);
+        doc.text(`${kota}, ${formatTanggalLengkap(tanggalCetak)}`, rightX, finalY, { align: 'right' });
+        // Kolom tanda tangan
+        doc.setFontSize(12);
+        doc.text('Pimpinan', margin, finalY + 20);
+        doc.text('Bendahara', rightX, finalY + 20, { align: 'right' });
+        // Nama dalam tanda kurung
+        doc.setFontSize(12);
+        doc.text(`(${namaPimpinan})`, margin, finalY + 45);
+        doc.text(`(${namaBendahara})`, rightX, finalY + 45, { align: 'right' });
+        // Footer paling bawah: dicetak dari ... sampai dengan tanggal jam
+        doc.setFontSize(10);
+        const footerText = `Dicetak dari: ${urlCetak} sampai dengan ${formatTanggalJam(tanggalCetak)}`;
+        doc.text(footerText, pageWidth / 2, 200, { align: 'center' });
+      } else {
+        doc.setFontSize(12);
+        doc.text('Tidak ada data rencana kegiatan untuk periode yang dipilih.', 105, 80, { align: 'center' });
+      }
+      // Download PDF
+      doc.save(`laporan-rencana-kegiatan-${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success('PDF berhasil diexport');
     } catch (error: any) {
       console.error('Error exporting PDF:', error);
@@ -315,6 +410,22 @@ export default function RencanaKegiatanPage() {
     
     return parts.join(' × ');
   };
+
+  // Helper untuk format tanggal panjang
+  function formatTanggalLengkap(date: Date) {
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+  function formatTanggalJam(date: Date) {
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }) + ', ' + date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+  }
 
   if (loading) {
     return (
